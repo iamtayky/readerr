@@ -2,7 +2,7 @@ import './globals.css';
 
 export const metadata = {
   title: 'Tủ sách cá nhân',
-  description: 'Đọc sách EPUB từ Google Drive, đồng bộ tiến độ đọc và tối ưu cho điện thoại.',
+  description: 'Đọc sách EPUB từ Google Drive.',
 };
 
 export default function RootLayout({ children }) {
