@@ -17,7 +17,22 @@ function formatBytes(bytes) {
 }
 
 function cleanTitle(name) {
-  return name?.replace(/\.epub$/i, '') || 'Khong ro ten sach';
+  return name?.replace(/\.epub$/i, '') || 'Không rõ tên sách';
+}
+
+function vietHoaLoi(error) {
+  const raw = typeof error === 'string' ? error : error?.message || '';
+  const lower = raw.toLowerCase();
+  if (!raw) return 'Đã xảy ra lỗi. Vui lòng thử lại.';
+  if (lower.includes('invalid api key')) return 'Khóa Supabase không hợp lệ. Hãy kiểm tra NEXT_PUBLIC_SUPABASE_ANON_KEY trên Vercel.';
+  if (lower.includes('invalid login credentials')) return 'Email hoặc mật khẩu không đúng.';
+  if (lower.includes('email not confirmed')) return 'Email chưa được xác nhận. Hãy mở hộp thư và bấm liên kết xác nhận.';
+  if (lower.includes('user already registered')) return 'Email này đã có tài khoản. Hãy chuyển sang Đăng nhập.';
+  if (lower.includes('password')) return 'Mật khẩu chưa hợp lệ. Hãy dùng mật khẩu dài hơn hoặc mạnh hơn.';
+  if (lower.includes('failed to fetch')) return 'Không kết nối được máy chủ. Hãy kiểm tra mạng hoặc cấu hình Vercel.';
+  if (lower.includes('jwt')) return 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.';
+  if (lower.includes('rate limit')) return 'Bạn thao tác quá nhanh. Hãy chờ một lúc rồi thử lại.';
+  return raw;
 }
 
 export default function ReaderApp() {
@@ -45,7 +60,7 @@ export default function ReaderApp() {
   const [fontSize, setFontSize] = useState(100);
   const [progress, setProgress] = useState(0);
   const [currentChapter, setCurrentChapter] = useState('');
-  const [status, setStatus] = useState('Chua mo sach');
+  const [status, setStatus] = useState('Chưa mở sách');
   const [lastReadMap, setLastReadMap] = useState({});
   const [user, setUser] = useState(null);
   const [authEmail, setAuthEmail] = useState('');
@@ -129,7 +144,7 @@ export default function ReaderApp() {
         return next;
       });
     } catch (err) {
-      setAuthMessage(`Khong dong bo duoc tien do: ${err.message}`);
+      setAuthMessage(`Không đồng bộ được tiến độ: ${vietHoaLoi(err)}`);
     }
   }, []);
 
@@ -161,7 +176,7 @@ export default function ReaderApp() {
     try {
       const response = await fetch('/api/books', { cache: 'no-store' });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Khong tai duoc danh sach sach');
+      if (!response.ok) throw new Error(data.error || 'Không tải được danh sách sách');
       const nextBooks = data.books || [];
       setBooks(nextBooks);
       setSelectedBook((current) => current || nextBooks[0] || null);
@@ -230,7 +245,7 @@ export default function ReaderApp() {
           updated_at: record.updatedAt,
         }, { onConflict: 'user_id,book_id' })
         .then(({ error: cloudError }) => {
-          if (cloudError) setAuthMessage(`Luu online loi: ${cloudError.message}`);
+          if (cloudError) setAuthMessage(`Không lưu được tiến độ trực tuyến: ${vietHoaLoi(cloudError)}`);
         });
     }
   }, []);
@@ -242,7 +257,7 @@ export default function ReaderApp() {
       const full = JSON.parse(localStorage.getItem(`reader.lastRead.${bookId}`) || 'null');
       if (full?.cfi || full?.href) return full;
     } catch (_) {
-      // Fallback sang key cu.
+      // Fallback sang key cũ.
     }
 
     const legacyCfi = localStorage.getItem(`reader.position.${bookId}`);
@@ -279,7 +294,7 @@ export default function ReaderApp() {
       if (!localPoint?.updatedAt) return cloudPoint;
       return new Date(cloudPoint.updatedAt || 0) >= new Date(localPoint.updatedAt || 0) ? cloudPoint : localPoint;
     } catch (err) {
-      setAuthMessage(`Khong lay duoc tien do online: ${err.message}`);
+      setAuthMessage(`Không lấy được tiến độ online: ${err.message}`);
       return localPoint;
     }
   }, [getLocalReadingPoint]);
@@ -299,7 +314,7 @@ export default function ReaderApp() {
         nextProgress = Math.round(percentage * 1000) / 10;
         setProgress(nextProgress);
       } catch (_) {
-        // Co file EPUB chua tao xong locations. Van luu CFI de doc tiep.
+        // Có file EPUB chưa tạo xong locations. Vẫn lưu CFI để đọc tiếp.
       }
     }
 
@@ -365,13 +380,13 @@ export default function ReaderApp() {
       const resolved = new URL(raw, safeBase);
       add(`${resolved.pathname}${resolved.hash}`);
     } catch (_) {
-      // Bo qua URL khong hop le.
+      // Bỏ qua URL không hợp lệ.
     }
 
     try {
       add(decodeURIComponent(raw));
     } catch (_) {
-      // Bo qua href khong decode duoc.
+      // Bỏ qua href không decode được.
     }
 
     const fileName = normalizeHref(raw).split('#')[0].split('/').pop();
@@ -418,7 +433,7 @@ export default function ReaderApp() {
     }
 
     const target = findSpineTarget(href);
-    if (!target) throw new Error('Khong tim thay lien ket trong EPUB');
+    if (!target) throw new Error('Không tìm thấy liên kết trong EPUB');
 
     try {
       await rendition.display(target);
@@ -430,10 +445,10 @@ export default function ReaderApp() {
           await rendition.display(candidate);
           return;
         } catch (_) {
-          // Thu ung vien tiep theo.
+          // Thử ứng viên tiếp theo.
         }
       }
-      throw firstError || new Error('Khong chuyen duoc chuong');
+      throw firstError || new Error('Không chuyển được chương');
     }
   }, [findSpineTarget, makeInternalCandidates]);
 
@@ -442,7 +457,7 @@ export default function ReaderApp() {
     setSelectedBook(bookMeta);
     setShowLibrary(false);
     setLoadingBook(true);
-    setStatus('Dang tai file EPUB...');
+    setStatus('Đang tải file EPUB...');
     setToc([]);
     setProgress(0);
     setCurrentChapter('');
@@ -459,7 +474,7 @@ export default function ReaderApp() {
       const book = ePub(arrayBuffer);
       bookRef.current = book;
 
-      setStatus('Dang mo khung doc...');
+      setStatus('Đang mở khung đọc...');
       const rendition = book.renderTo(viewerRef.current, {
         width: '100%',
         height: '100%',
@@ -471,10 +486,10 @@ export default function ReaderApp() {
 
       const handleInternalLink = (href) => {
         if (!href) return;
-        setStatus('Dang chuyen chuong...');
+        setStatus('Đang chuyển chương...');
         displayTarget(href).catch((err) => {
-          setError(err.message || 'Khong chuyen duoc chuong');
-          setStatus('Loi khi chuyen chuong');
+          setError(err.message || 'Không chuyển được chương');
+          setStatus('Lỗi khi chuyển chương');
         });
       };
 
@@ -532,9 +547,9 @@ export default function ReaderApp() {
       rendition.themes.fontSize(`${fontSize}%`);
 
       rendition.on('relocated', updateProgress);
-      rendition.on('rendered', () => setStatus('Dang doc'));
+      rendition.on('rendered', () => setStatus('Đang đọc'));
 
-      setStatus('Dang hien thi trang dau...');
+      setStatus('Đang hiển thị trang đầu...');
       const saved = await getSavedReadingPoint(bookMeta.id);
       if (saved?.chapter) setCurrentChapter(saved.chapter);
       if (typeof saved?.progress === 'number') setProgress(saved.progress);
@@ -559,8 +574,8 @@ export default function ReaderApp() {
         book.locations.generate(300).catch(() => null);
       }, 800);
     } catch (err) {
-      setError(err.message || 'Khong mo duoc sach');
-      setStatus('Loi khi mo sach');
+      setError(err.message || 'Không mở được sách');
+      setStatus('Lỗi khi mở sách');
     } finally {
       setLoadingBook(false);
     }
@@ -581,13 +596,13 @@ export default function ReaderApp() {
 
   const goNext = useCallback(async () => {
     if (!renditionRef.current) return;
-    setStatus('Dang chuyen trang...');
+    setStatus('Đang chuyển trang...');
     await renditionRef.current.next();
   }, []);
 
   const goPrev = useCallback(async () => {
     if (!renditionRef.current) return;
-    setStatus('Dang chuyen trang...');
+    setStatus('Đang chuyển trang...');
     await renditionRef.current.prev();
   }, []);
 
@@ -608,12 +623,12 @@ export default function ReaderApp() {
   const jumpTo = async (href) => {
     if (!renditionRef.current) return;
     setShowToc(false);
-    setStatus('Dang chuyen chuong...');
+    setStatus('Đang chuyển chương...');
     try {
       await displayTarget(href);
     } catch (err) {
-      setError(err.message || 'Khong chuyen duoc chuong');
-      setStatus('Loi khi chuyen chuong');
+      setError(err.message || 'Không chuyển được chương');
+      setStatus('Lỗi khi chuyển chương');
     }
   };
 
@@ -642,11 +657,11 @@ export default function ReaderApp() {
   const handleAuthSubmit = async (event) => {
     event.preventDefault();
     if (!supabase) {
-      setAuthMessage('Chua cau hinh Supabase tren Vercel.');
+      setAuthMessage('Chưa cấu hình Supabase trên Vercel.');
       return;
     }
     if (!authEmail || !authPassword) {
-      setAuthMessage('Nhap email va mat khau.');
+      setAuthMessage('Nhập email và mật khẩu.');
       return;
     }
 
@@ -660,12 +675,12 @@ export default function ReaderApp() {
       if (authError) throw authError;
 
       if (authMode === 'signup' && !data.session) {
-        setAuthMessage('Da tao tai khoan. Hay kiem tra email de xac nhan neu Supabase yeu cau.');
+        setAuthMessage('Đã tạo tài khoản. Hãy kiểm tra email để xác nhận nếu Supabase yêu cầu.');
       } else {
-        setAuthMessage('Da dang nhap va dang dong bo tien do doc.');
+        setAuthMessage('Đã đăng nhập và đang đồng bộ tiến độ đọc.');
       }
     } catch (err) {
-      setAuthMessage(err.message || 'Dang nhap that bai.');
+      setAuthMessage(vietHoaLoi(err) || 'Đăng nhập thất bại.');
     } finally {
       setAuthBusy(false);
     }
@@ -678,9 +693,9 @@ export default function ReaderApp() {
     try {
       const { error: authError } = await supabase.auth.signOut();
       if (authError) throw authError;
-      setAuthMessage('Da dang xuat. Tien do cuc bo van duoc giu tren may nay.');
+      setAuthMessage('Đã đăng xuất. Tiến độ cục bộ vẫn được giữ trên máy này.');
     } catch (err) {
-      setAuthMessage(err.message || 'Dang xuat that bai.');
+      setAuthMessage(vietHoaLoi(err) || 'Đăng xuất thất bại.');
     } finally {
       setAuthBusy(false);
     }
@@ -688,51 +703,51 @@ export default function ReaderApp() {
 
   return (
     <main className={`app-shell ${readerMode ? 'reader-focus' : ''} ${showLibrary ? 'library-open' : ''}`}>
-      {showLibrary && <button className="mobile-backdrop" aria-label="Dong thu vien" onClick={() => setShowLibrary(false)} />}
+      {showLibrary && <button className="mobile-backdrop" aria-label="Đóng thư viện" onClick={() => setShowLibrary(false)} />}
 
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-icon"><BookOpen size={22} /></div>
           <div>
-            <h1>Drive EPUB Reader</h1>
-            <p>Doc sach tu Google Drive</p>
+            <h1>Tủ sách cá nhân</h1>
+            <p>Đọc EPUB từ Google Drive</p>
           </div>
-          <button className="sidebar-close" onClick={() => setShowLibrary(false)} aria-label="Dong thu vien"><X size={18} /></button>
+          <button className="sidebar-close" onClick={() => setShowLibrary(false)} aria-label="Đóng thư viện"><X size={18} /></button>
         </div>
 
         <div className="search-box">
           <Search size={16} />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tim sach..." />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm tên sách..." />
         </div>
 
         <button className="secondary-btn" onClick={loadBooks} disabled={loadingBooks}>
-          <RefreshCw size={16} className={loadingBooks ? 'spin' : ''} /> Tai lai thu vien
+          <RefreshCw size={16} className={loadingBooks ? 'spin' : ''} /> Làm mới danh sách
         </button>
 
         <div className="auth-card">
           <div className="auth-title">
             <User size={16} />
-            <strong>{user ? 'Tai khoan doc sach' : 'Dong bo tien do'}</strong>
+            <strong>{user ? 'Tài khoản đọc sách' : 'Đăng nhập để đồng bộ'}</strong>
           </div>
 
           {!isSupabaseConfigured ? (
-            <p className="auth-note">Chua cau hinh Supabase. App van luu doc tiep tren may nay.</p>
+            <p className="auth-note">Chưa cấu hình Supabase. Bạn vẫn có thể đọc tiếp trên thiết bị này.</p>
           ) : user ? (
             <>
-              <p className="auth-note">Dang nhap: <b>{user.email}</b></p>
+              <p className="auth-note">Tài khoản hiện tại: <b>{user.email}</b></p>
               <button className="secondary-btn compact" onClick={handleSignOut} disabled={authBusy}>
-                <LogOut size={15} /> Dang xuat
+                <LogOut size={15} /> Đăng xuất
               </button>
             </>
           ) : (
             <form onSubmit={handleAuthSubmit} className="auth-form">
-              <input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email" autoComplete="email" />
-              <input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="Mat khau" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} />
+              <input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email đăng nhập" autoComplete="email" />
+              <input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="Mật khẩu" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} />
               <button className="secondary-btn compact" type="submit" disabled={authBusy}>
-                <LogIn size={15} /> {authBusy ? 'Dang xu ly...' : authMode === 'signup' ? 'Tao tai khoan' : 'Dang nhap'}
+                <LogIn size={15} /> {authBusy ? 'Đang xử lý...' : authMode === 'signup' ? 'Tạo tài khoản' : 'Đăng nhập'}
               </button>
               <button className="link-btn" type="button" onClick={() => setAuthMode((v) => v === 'signup' ? 'login' : 'signup')}>
-                {authMode === 'signup' ? 'Da co tai khoan? Dang nhap' : 'Chua co tai khoan? Tao moi'}
+                {authMode === 'signup' ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký ngay'}
               </button>
             </form>
           )}
@@ -743,7 +758,7 @@ export default function ReaderApp() {
 
         <div className="book-list">
           {loadingBooks ? (
-            <div className="empty">Dang lay danh sach tu Drive...</div>
+            <div className="empty">Đang tải danh sách sách từ Google Drive...</div>
           ) : filteredBooks.length ? (
             filteredBooks.map((book) => (
               <button
@@ -755,13 +770,13 @@ export default function ReaderApp() {
                 <div>
                   <strong>{cleanTitle(book.name)}</strong>
                   <span>{formatBytes(book.size)} {book.modifiedTime ? `- ${new Date(book.modifiedTime).toLocaleDateString('vi-VN')}` : ''}</span>
-                  {lastReadMap[book.id]?.chapter && <em>Doc tiep: {lastReadMap[book.id].chapter}{lastReadMap[book.id]?.source === 'cloud' ? ' - online' : ''}</em>}
-                  {!lastReadMap[book.id]?.chapter && typeof lastReadMap[book.id]?.progress === 'number' && <em>Doc tiep: {lastReadMap[book.id].progress}%</em>}
+                  {lastReadMap[book.id]?.chapter && <em>Đọc tiếp: {lastReadMap[book.id].chapter}{lastReadMap[book.id]?.source === 'cloud' ? ' · đã đồng bộ' : ''}</em>}
+                  {!lastReadMap[book.id]?.chapter && typeof lastReadMap[book.id]?.progress === 'number' && <em>Đọc tiếp: {lastReadMap[book.id].progress}%</em>}
                 </div>
               </button>
             ))
           ) : (
-            <div className="empty">Khong co file .epub trong folder Drive.</div>
+            <div className="empty">Chưa tìm thấy file EPUB trong thư mục Google Drive.</div>
           )}
         </div>
       </aside>
@@ -769,50 +784,50 @@ export default function ReaderApp() {
       <section className="reader-panel">
         <header className="topbar">
           <div className="title-row">
-            <button className="mobile-library-btn" onClick={() => setShowLibrary(true)} title="Thu vien" aria-label="Mo thu vien">
+            <button className="mobile-library-btn" onClick={() => setShowLibrary(true)} title="Thư viện" aria-label="Mở thư viện">
               <PanelLeft size={18} />
             </button>
             <div className="title-area">
               <span>{status}</span>
-              <h2>{selectedBook ? cleanTitle(selectedBook.name) : 'Chon mot cuon sach'}</h2>
-              <p>{currentChapter || 'Vuot trai/phai hoac bam 2 canh man hinh de chuyen trang'}</p>
+              <h2>{selectedBook ? cleanTitle(selectedBook.name) : 'Chọn sách để bắt đầu đọc'}</h2>
+              <p>{currentChapter || 'Vuốt trái/phải hoặc chạm hai cạnh màn hình để chuyển trang'}</p>
             </div>
           </div>
 
-          <div className="toolbar" aria-label="Cong cu doc sach">
-            <button onClick={() => setShowToc((v) => !v)} title="Muc luc" aria-label="Muc luc"><ListTree size={18} /></button>
-            <button onClick={() => setFontSize((v) => Math.max(70, v - 10))} aria-label="Giam co chu">A-</button>
-            <button onClick={() => setFontSize((v) => Math.min(180, v + 10))} aria-label="Tang co chu">A+</button>
-            <button onClick={() => setDarkMode((v) => !v)} title="Dark mode" aria-label="Dark mode">{darkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
-            <button onClick={() => setReaderMode((v) => !v)} title="Che do doc sach" aria-label="Che do doc sach">{readerMode ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
-            <button className="settings-pill" aria-label="Co chu hien tai"><Settings size={16} /> {fontSize}%</button>
+          <div className="toolbar" aria-label="Công cụ đọc sách">
+            <button onClick={() => setShowToc((v) => !v)} title="Mục lục" aria-label="Mục lục"><ListTree size={18} /></button>
+            <button onClick={() => setFontSize((v) => Math.max(70, v - 10))} aria-label="Giảm cỡ chữ">A-</button>
+            <button onClick={() => setFontSize((v) => Math.min(180, v + 10))} aria-label="Tăng cỡ chữ">A+</button>
+            <button onClick={() => setDarkMode((v) => !v)} title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện sáng/tối">{darkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
+            <button onClick={() => setReaderMode((v) => !v)} title="Chế độ đọc tập trung" aria-label="Chế độ đọc tập trung">{readerMode ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
+            <button className="settings-pill" aria-label="Cỡ chữ hiện tại"><Settings size={16} /> {fontSize}%</button>
           </div>
         </header>
 
         <div className="progress-wrap"><div style={{ width: `${progress}%` }} /></div>
 
         <div className="reader-wrap" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-          <button className="nav-btn left" onClick={goPrev} aria-label="Trang truoc"><ChevronLeft size={30} /></button>
+          <button className="nav-btn left" onClick={goPrev} aria-label="Trang trước"><ChevronLeft size={30} /></button>
           <div className="epub-viewer" ref={viewerRef}>
-            {!selectedBook && <div className="empty big">Hay mo thu vien va chon sach de doc.</div>}
-            {loadingBook && <div className="loading-overlay">Dang mo sach...</div>}
+            {!selectedBook && <div className="empty big">Mở tủ sách và chọn một cuốn để đọc.</div>}
+            {loadingBook && <div className="loading-overlay">Đang mở sách...</div>}
           </div>
           <button className="nav-btn right" onClick={goNext} aria-label="Trang sau"><ChevronRight size={30} /></button>
         </div>
       </section>
 
       {showToc && (
-        <div className="toc-drawer" role="dialog" aria-label="Muc luc">
+        <div className="toc-drawer" role="dialog" aria-label="Mục lục">
           <div className="toc-header">
-            <strong>Muc luc</strong>
-            <button onClick={() => setShowToc(false)}>Dong</button>
+            <strong>Mục lục</strong>
+            <button onClick={() => setShowToc(false)}>Đóng</button>
           </div>
           <div className="toc-list">
             {toc.length ? toc.map((item, index) => (
               <button key={`${item.href}-${index}`} onClick={() => jumpTo(item.href)}>
-                {item.label?.trim() || `Chuong ${index + 1}`}
+                {item.label?.trim() || `Chương ${index + 1}`}
               </button>
-            )) : <p>File nay khong co muc luc ro rang.</p>}
+            )) : <p>Sách này không có mục lục rõ ràng.</p>}
           </div>
         </div>
       )}
