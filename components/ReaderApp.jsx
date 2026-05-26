@@ -35,6 +35,18 @@ function vietHoaLoi(error) {
   return raw;
 }
 
+function isAbortLike(error) {
+  return error?.name === 'AbortError' || String(error?.message || '').toLowerCase().includes('aborted');
+}
+
+function safeJsonParse(value, fallback) {
+  try {
+    return JSON.parse(value);
+  } catch (_) {
+    return fallback;
+  }
+}
+
 export default function ReaderApp() {
   const viewerRef = useRef(null);
   const bookRef = useRef(null);
@@ -45,6 +57,9 @@ export default function ReaderApp() {
   const selectedBookRef = useRef(null);
   const saveTimerRef = useRef(null);
   const userRef = useRef(null);
+  const openTokenRef = useRef(0);
+  const locationsTimerRef = useRef(null);
+  const lastSavedCfiRef = useRef('');
 
   const [books, setBooks] = useState([]);
   const [selectedBook, setSelectedBook] = useState(null);
@@ -75,11 +90,7 @@ export default function ReaderApp() {
     setDarkMode(storedTheme === 'dark');
     if (storedSize >= 70 && storedSize <= 180) setFontSize(storedSize);
 
-    try {
-      setLastReadMap(JSON.parse(localStorage.getItem('reader.lastReadMap') || '{}'));
-    } catch (_) {
-      setLastReadMap({});
-    }
+    setLastReadMap(safeJsonParse(localStorage.getItem('reader.lastReadMap') || '{}', {}));
   }, []);
 
   useEffect(() => {
@@ -175,8 +186,9 @@ export default function ReaderApp() {
     setError('');
     try {
       const response = await fetch('/api/books', { cache: 'no-store' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Không tải được danh sách sách');
+      const text = await response.text();
+      const data = safeJsonParse(text || '{}', {});
+      if (!response.ok) throw new Error(data.error || text || 'Không tải được danh sách sách');
       const nextBooks = data.books || [];
       setBooks(nextBooks);
       setSelectedBook((current) => current || nextBooks[0] || null);
@@ -198,18 +210,24 @@ export default function ReaderApp() {
   }, [books, query]);
 
   const destroyCurrentBook = useCallback(() => {
+    openTokenRef.current += 1;
+    window.clearTimeout(saveTimerRef.current);
+    window.clearTimeout(locationsTimerRef.current);
+    lastSavedCfiRef.current = '';
+
     if (renditionRef.current) {
-      renditionRef.current.destroy();
+      try { renditionRef.current.destroy(); } catch (_) {}
       renditionRef.current = null;
     }
     if (bookRef.current) {
-      bookRef.current.destroy();
+      try { bookRef.current.destroy(); } catch (_) {}
       bookRef.current = null;
     }
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
     }
+    if (viewerRef.current) viewerRef.current.innerHTML = '';
   }, []);
 
 
@@ -253,12 +271,8 @@ export default function ReaderApp() {
   const getLocalReadingPoint = useCallback((bookId) => {
     if (!bookId) return null;
 
-    try {
-      const full = JSON.parse(localStorage.getItem(`reader.lastRead.${bookId}`) || 'null');
-      if (full?.cfi || full?.href) return full;
-    } catch (_) {
-      // Fallback sang key cũ.
-    }
+    const full = safeJsonParse(localStorage.getItem(`reader.lastRead.${bookId}`) || 'null', null);
+    if (full?.cfi || full?.href) return full;
 
     const legacyCfi = localStorage.getItem(`reader.position.${bookId}`);
     return legacyCfi ? { cfi: legacyCfi } : null;
@@ -322,7 +336,8 @@ export default function ReaderApp() {
     const chapterLabel = chapter?.label?.trim() || currentChapter || '';
     if (chapterLabel) setCurrentChapter(chapterLabel);
 
-    if (bookMeta?.id && cfi) {
+    if (bookMeta?.id && cfi && cfi !== lastSavedCfiRef.current) {
+      lastSavedCfiRef.current = cfi;
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = window.setTimeout(() => {
         persistLastRead(bookMeta.id, {
@@ -333,7 +348,7 @@ export default function ReaderApp() {
           chapter: chapterLabel,
           progress: nextProgress,
         });
-      }, 250);
+      }, 650);
     }
   }, [currentChapter, persistLastRead, progress]);
 
@@ -454,6 +469,9 @@ export default function ReaderApp() {
 
   const openBook = useCallback(async (bookMeta) => {
     if (!bookMeta) return;
+    const openToken = openTokenRef.current + 1;
+    openTokenRef.current = openToken;
+
     setSelectedBook(bookMeta);
     setShowLibrary(false);
     setLoadingBook(true);
@@ -463,14 +481,22 @@ export default function ReaderApp() {
     setCurrentChapter('');
     setError('');
 
+    const ensureActive = () => openTokenRef.current === openToken;
+
     try {
       destroyCurrentBook();
+      openTokenRef.current = openToken;
+
       const response = await fetch(`/api/book/${bookMeta.id}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(await response.text());
+      if (!ensureActive()) return;
 
       const arrayBuffer = await response.arrayBuffer();
+      if (!ensureActive()) return;
 
       const { default: ePub } = await import('epubjs');
+      if (!ensureActive()) return;
+
       const book = ePub(arrayBuffer);
       bookRef.current = book;
 
@@ -481,25 +507,29 @@ export default function ReaderApp() {
         spread: 'none',
         flow: 'paginated',
         allowScriptedContent: false,
+        manager: 'default',
       });
       renditionRef.current = rendition;
 
       const handleInternalLink = (href) => {
-        if (!href) return;
+        if (!href || !ensureActive()) return;
         setStatus('Đang chuyển chương...');
         displayTarget(href).catch((err) => {
+          if (!ensureActive()) return;
           setError(err.message || 'Không chuyển được chương');
           setStatus('Lỗi khi chuyển chương');
         });
       };
 
-      rendition.on('linkClicked', (href) => {
-        handleInternalLink(href);
-      });
+      rendition.on('linkClicked', handleInternalLink);
 
       rendition.hooks.content.register((contents) => {
         const doc = contents?.document;
         if (!doc) return;
+
+        doc.documentElement.style.scrollBehavior = 'auto';
+        doc.body?.style?.setProperty('-webkit-font-smoothing', 'antialiased');
+        doc.body?.style?.setProperty('text-rendering', 'optimizeLegibility');
 
         doc.querySelectorAll('a[href]').forEach((anchor) => {
           anchor.removeAttribute('target');
@@ -521,36 +551,45 @@ export default function ReaderApp() {
         }, true);
       });
 
-      rendition.themes.register('light', {
+      const commonTheme = {
         body: {
-          color: '#1f2937',
-          background: '#fffaf2',
-          'line-height': '1.78',
+          'font-family': 'Garamond, "Times New Roman", Times, serif',
+          'line-height': '1.82',
           'padding': '0 2px',
+          'text-rendering': 'optimizeLegibility',
+          '-webkit-font-smoothing': 'antialiased',
         },
-        p: { 'margin-bottom': '0.9em' },
-        a: { color: '#7c3aed', cursor: 'pointer', 'touch-action': 'manipulation' },
+        p: { 'margin-bottom': '0.92em' },
+        a: { cursor: 'pointer', 'touch-action': 'manipulation' },
         img: { 'max-width': '100%', height: 'auto' },
+      };
+
+      rendition.themes.register('light', {
+        ...commonTheme,
+        body: { ...commonTheme.body, color: '#1f2937', background: '#fffaf2' },
+        a: { ...commonTheme.a, color: '#7c3aed' },
       });
       rendition.themes.register('dark', {
-        body: {
-          color: '#e5e7eb',
-          background: '#111827',
-          'line-height': '1.78',
-          'padding': '0 2px',
-        },
-        p: { 'margin-bottom': '0.9em' },
-        a: { color: '#a78bfa', cursor: 'pointer', 'touch-action': 'manipulation' },
-        img: { 'max-width': '100%', height: 'auto' },
+        ...commonTheme,
+        body: { ...commonTheme.body, color: '#e5e7eb', background: '#111827' },
+        a: { ...commonTheme.a, color: '#a78bfa' },
       });
       rendition.themes.select(darkMode ? 'dark' : 'light');
       rendition.themes.fontSize(`${fontSize}%`);
 
-      rendition.on('relocated', updateProgress);
-      rendition.on('rendered', () => setStatus('Đang đọc'));
+      rendition.on('relocated', (location) => {
+        if (ensureActive()) updateProgress(location);
+      });
+      rendition.on('rendered', () => {
+        if (ensureActive()) setStatus('Đang đọc');
+      });
+      rendition.on('displayed', () => {
+        if (ensureActive()) setLoadingBook(false);
+      });
 
       setStatus('Đang hiển thị trang đầu...');
       const saved = await getSavedReadingPoint(bookMeta.id);
+      if (!ensureActive()) return;
       if (saved?.chapter) setCurrentChapter(saved.chapter);
       if (typeof saved?.progress === 'number') setProgress(saved.progress);
 
@@ -559,25 +598,38 @@ export default function ReaderApp() {
       } catch (_) {
         await rendition.display(saved?.href || undefined);
       }
+      if (!ensureActive()) return;
 
       book.loaded.navigation
         .then((navigation) => {
+          if (!ensureActive()) return;
           tocRef.current = navigation?.toc || [];
           setToc(tocRef.current);
         })
         .catch(() => {
+          if (!ensureActive()) return;
           tocRef.current = [];
           setToc([]);
         });
 
-      setTimeout(() => {
-        book.locations.generate(300).catch(() => null);
-      }, 800);
+      const generateLocations = () => {
+        if (!ensureActive() || !bookRef.current?.locations) return;
+        book.locations.generate(180).catch(() => null);
+      };
+
+      if ('requestIdleCallback' in window) {
+        const idleId = window.requestIdleCallback(generateLocations, { timeout: 2500 });
+        locationsTimerRef.current = window.setTimeout(() => window.cancelIdleCallback?.(idleId), 4000);
+      } else {
+        locationsTimerRef.current = window.setTimeout(generateLocations, 1200);
+      }
     } catch (err) {
-      setError(err.message || 'Không mở được sách');
-      setStatus('Lỗi khi mở sách');
+      if (!isAbortLike(err) && ensureActive()) {
+        setError(err.message || 'Không mở được sách');
+        setStatus('Lỗi khi mở sách');
+      }
     } finally {
-      setLoadingBook(false);
+      if (ensureActive()) setLoadingBook(false);
     }
   }, [darkMode, destroyCurrentBook, displayTarget, fontSize, getSavedReadingPoint, updateProgress]);
 
@@ -595,15 +647,27 @@ export default function ReaderApp() {
 
 
   const goNext = useCallback(async () => {
-    if (!renditionRef.current) return;
+    const rendition = renditionRef.current;
+    if (!rendition) return;
     setStatus('Đang chuyển trang...');
-    await renditionRef.current.next();
+    try {
+      await rendition.next();
+    } catch (err) {
+      setError(err.message || 'Không chuyển được trang sau');
+      setStatus('Lỗi khi chuyển trang');
+    }
   }, []);
 
   const goPrev = useCallback(async () => {
-    if (!renditionRef.current) return;
+    const rendition = renditionRef.current;
+    if (!rendition) return;
     setStatus('Đang chuyển trang...');
-    await renditionRef.current.prev();
+    try {
+      await rendition.prev();
+    } catch (err) {
+      setError(err.message || 'Không chuyển được trang trước');
+      setStatus('Lỗi khi chuyển trang');
+    }
   }, []);
 
   useEffect(() => {
