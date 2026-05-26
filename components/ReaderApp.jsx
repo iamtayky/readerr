@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ePub from 'epubjs';
 import { BookOpen, ChevronLeft, ChevronRight, Library, ListTree, Maximize2, Minimize2, Moon, RefreshCw, Search, Settings, Sun } from 'lucide-react';
 
 function formatBytes(bytes) {
@@ -133,21 +132,18 @@ export default function ReaderApp() {
 
     try {
       destroyCurrentBook();
-      const response = await fetch(`/api/book/${bookMeta.id}`);
+      const response = await fetch(`/api/book/${bookMeta.id}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(await response.text());
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      objectUrlRef.current = objectUrl;
 
-      const book = ePub(objectUrl);
+      // Doc EPUB thanh ArrayBuffer thay vi blob URL. Cach nay on dinh hon tren Vercel/Chrome
+      // va tranh viec epub.js bi treo khi request lai object URL.
+      const arrayBuffer = await response.arrayBuffer();
+
+      const { default: ePub } = await import('epubjs');
+      const book = ePub(arrayBuffer);
       bookRef.current = book;
 
-      setStatus('Dang phan tich cau truc sach...');
-      await book.ready;
-      const navigation = await book.loaded.navigation;
-      tocRef.current = navigation?.toc || [];
-      setToc(tocRef.current);
-
+      setStatus('Dang mo khung doc...');
       const rendition = book.renderTo(viewerRef.current, {
         width: '100%',
         height: '100%',
@@ -173,9 +169,27 @@ export default function ReaderApp() {
       rendition.on('relocated', updateProgress);
       rendition.on('rendered', () => setStatus('Dang doc'));
 
-      await book.locations.generate(1200);
+      // Hien thi trang dau tien ngay lap tuc. Khong doi tao location/progress,
+      // vi sach nay co gan 3.000 file XHTML nen generate location co the mat rat lau.
+      setStatus('Dang hien thi trang dau...');
       const saved = localStorage.getItem(`reader.position.${bookMeta.id}`);
       await rendition.display(saved || undefined);
+
+      // Tai muc luc o nen, khong chan viec mo sach.
+      book.loaded.navigation
+        .then((navigation) => {
+          tocRef.current = navigation?.toc || [];
+          setToc(tocRef.current);
+        })
+        .catch(() => {
+          tocRef.current = [];
+          setToc([]);
+        });
+
+      // Tao location o nen voi do chi tiet thap hon. Neu that bai thi van doc duoc sach.
+      setTimeout(() => {
+        book.locations.generate(300).catch(() => null);
+      }, 800);
     } catch (err) {
       setError(err.message || 'Khong mo duoc sach');
       setStatus('Loi khi mo sach');
