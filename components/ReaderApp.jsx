@@ -528,7 +528,21 @@ export default function ReaderApp() {
         if (!doc) return;
 
         doc.documentElement.style.scrollBehavior = 'auto';
+
+        if (!doc.getElementById('reader-vietnamese-font')) {
+          const fontStyle = doc.createElement('style');
+          fontStyle.id = 'reader-vietnamese-font';
+          fontStyle.textContent = `
+            @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&display=swap');
+            html, body, p, div, span, li, td, th, h1, h2, h3, h4, h5, h6 {
+              font-family: "EB Garamond", Georgia, "Times New Roman", serif !important;
+            }
+          `;
+          doc.head?.appendChild(fontStyle);
+        }
+
         doc.body?.style?.setProperty('-webkit-font-smoothing', 'antialiased');
+        doc.body?.style?.setProperty('-moz-osx-font-smoothing', 'grayscale');
         doc.body?.style?.setProperty('text-rendering', 'optimizeLegibility');
 
         doc.querySelectorAll('a[href]').forEach((anchor) => {
@@ -551,15 +565,20 @@ export default function ReaderApp() {
         }, true);
       });
 
+      const readerFontFamily = '"EB Garamond", Georgia, "Times New Roman", serif';
+
       const commonTheme = {
         body: {
-          'font-family': 'Garamond, "Times New Roman", Times, serif',
-          'line-height': '1.82',
+          'font-family': readerFontFamily,
+          'line-height': '1.86',
           'padding': '0 2px',
+          'font-kerning': 'normal',
+          'font-variant-ligatures': 'common-ligatures',
           'text-rendering': 'optimizeLegibility',
           '-webkit-font-smoothing': 'antialiased',
+          '-moz-osx-font-smoothing': 'grayscale',
         },
-        p: { 'margin-bottom': '0.92em' },
+        p: { 'margin-bottom': '0.95em' },
         a: { cursor: 'pointer', 'touch-action': 'manipulation' },
         img: { 'max-width': '100%', height: 'auto' },
       };
