@@ -498,3 +498,200 @@ input:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* v12: một nền thống nhất + chế độ đọc toàn màn hình */
+body {
+  background: var(--bg);
+}
+
+.app-shell {
+  background: var(--bg);
+}
+
+.sidebar,
+.reader-panel,
+.toc-drawer {
+  background: var(--bg);
+  box-shadow: none;
+}
+
+.reader-panel,
+.sidebar {
+  border-color: color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.epub-viewer {
+  background: var(--bg);
+}
+
+.topbar {
+  background: var(--bg);
+}
+
+body.reader-immersive-active {
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.reader-focus {
+  display: block;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.reader-focus .sidebar,
+.reader-focus .mobile-backdrop,
+.reader-focus .toc-drawer {
+  display: none !important;
+}
+
+.reader-focus .reader-panel {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: 0 3px minmax(0, 1fr);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--bg);
+}
+
+.reader-focus .topbar {
+  opacity: 0;
+  pointer-events: none;
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+}
+
+.reader-focus .progress-wrap {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  height: 3px;
+  background: transparent;
+}
+
+.reader-focus .reader-wrap {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  display: block;
+  position: relative;
+  background: var(--bg);
+}
+
+.reader-focus .epub-viewer {
+  width: 100vw;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  background: var(--bg);
+}
+
+.reader-focus .nav-btn {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: min(18vw, 120px);
+  min-width: 44px;
+  border: 0;
+  z-index: 45;
+  background: transparent;
+  color: transparent;
+}
+
+.reader-focus .nav-btn.left {
+  left: 0;
+}
+
+.reader-focus .nav-btn.right {
+  right: 0;
+}
+
+.reader-focus .nav-btn:hover,
+.reader-focus .nav-btn:focus-visible {
+  background: color-mix(in srgb, var(--accent-soft) 32%, transparent);
+  color: var(--accent);
+}
+
+.immersive-exit {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  right: calc(10px + var(--safe-right));
+  z-index: 70;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  color: var(--text);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .12);
+  opacity: .38;
+  transition: opacity .15s ease, transform .15s ease, background .15s ease;
+}
+
+.immersive-exit:hover,
+.immersive-exit:focus-visible {
+  opacity: 1;
+  transform: scale(1.03);
+}
+
+@media (max-width: 920px) {
+  .app-shell,
+  .reader-panel,
+  .topbar,
+  .epub-viewer {
+    background: var(--bg);
+  }
+
+  .reader-focus .reader-panel {
+    grid-template-rows: 0 2px minmax(0, 1fr);
+  }
+
+  .reader-focus .progress-wrap {
+    height: 2px;
+  }
+
+  .reader-focus .epub-viewer {
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+  }
+
+  .reader-focus .nav-btn {
+    width: 19vw;
+    min-width: 52px;
+    color: transparent;
+    background: transparent;
+  }
+
+  .reader-focus .nav-btn svg {
+    opacity: 0;
+  }
+
+  .immersive-exit {
+    width: 38px;
+    height: 38px;
+    opacity: .28;
+  }
+}
+
+@media (max-width: 420px) {
+  .reader-focus .reader-wrap,
+  .reader-focus .epub-viewer {
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+  }
+}
