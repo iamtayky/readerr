@@ -102,6 +102,26 @@ export default function ReaderApp() {
   }, [user]);
 
   useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setReaderMode(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle('reader-immersive-active', readerMode);
+    return () => document.body.classList.remove('reader-immersive-active');
+  }, [readerMode]);
+
+  useEffect(() => {
+    if (readerMode) setShowLibrary(false);
+  }, [readerMode]);
+
+  useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
     let alive = true;
@@ -769,6 +789,32 @@ export default function ReaderApp() {
     }
   };
 
+  const handleToggleReaderMode = async () => {
+    const next = !readerMode;
+    setReaderMode(next);
+
+    if (next) {
+      setShowLibrary(false);
+      setShowToc(false);
+      const root = document.documentElement;
+      try {
+        if (root.requestFullscreen && !document.fullscreenElement) {
+          await root.requestFullscreen();
+        }
+      } catch (_) {
+        // iPhone Safari không hỗ trợ fullscreen chuẩn; CSS immersive sẽ xử lý phần còn lại.
+      }
+    } else {
+      try {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          await document.exitFullscreen();
+        }
+      } catch (_) {
+        // Bỏ qua lỗi thoát fullscreen để không làm gián đoạn đọc.
+      }
+    }
+  };
+
   const handleSignOut = async () => {
     if (!supabase) return;
     setAuthBusy(true);
@@ -865,6 +911,11 @@ export default function ReaderApp() {
       </aside>
 
       <section className="reader-panel">
+        {readerMode && (
+          <button className="immersive-exit" onClick={handleToggleReaderMode} aria-label="Thoát toàn màn hình" title="Thoát toàn màn hình">
+            <Minimize2 size={18} />
+          </button>
+        )}
         <header className="topbar">
           <div className="title-row">
             <button className="mobile-library-btn" onClick={() => setShowLibrary(true)} title="Thư viện" aria-label="Mở thư viện">
@@ -873,7 +924,7 @@ export default function ReaderApp() {
             <div className="title-area">
               <span>{status}</span>
               <h2>{selectedBook ? cleanTitle(selectedBook.name) : 'Chọn sách để bắt đầu đọc'}</h2>
-              <p>{currentChapter || 'Vuốt trái/phải hoặc chạm hai cạnh màn hình để chuyển trang'}</p>
+              <p>{currentChapter || 'Vuốt trái/phải để chuyển trang'}</p>
             </div>
           </div>
 
@@ -882,7 +933,7 @@ export default function ReaderApp() {
             <button onClick={() => setFontSize((v) => Math.max(70, v - 10))} aria-label="Giảm cỡ chữ">A-</button>
             <button onClick={() => setFontSize((v) => Math.min(180, v + 10))} aria-label="Tăng cỡ chữ">A+</button>
             <button onClick={() => setDarkMode((v) => !v)} title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện sáng/tối">{darkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
-            <button onClick={() => setReaderMode((v) => !v)} title="Chế độ đọc tập trung" aria-label="Chế độ đọc tập trung">{readerMode ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
+            <button onClick={handleToggleReaderMode} title={readerMode ? 'Thoát toàn màn hình' : 'Đọc toàn màn hình'} aria-label={readerMode ? 'Thoát toàn màn hình' : 'Đọc toàn màn hình'}>{readerMode ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
             <button className="settings-pill" aria-label="Cỡ chữ hiện tại"><Settings size={16} /> {fontSize}%</button>
           </div>
         </header>
